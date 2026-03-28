@@ -127,6 +127,10 @@ Control codes in dialogue strings:
 - **Pillow** for font_patch.py (`pip install Pillow`)
 - **DejaVu Sans Mono Bold** font (included in most Linux distros; the path in font_patch.py may need adjusting for your system)
 
+## How This Was Made
+
+The reverse engineering, tool development, and documentation in this repository were produced by [Claude](https://claude.ai/) (Anthropic), directed by [@RayCharlizard](https://github.com/RayCharlizard). Claude performed the binary analysis of the XBE executable and script formats, identified the halfwidth rendering system, wrote the Python tools, and authored the technical documentation. RayCharlizard provided project direction, testing, and verification on xemu and original hardware.
+
 ## Prior Work & Credits
 
 - **[MrRichard999](https://www.romhacking.net/community/131/)** — Original translation PoC patch (~2019). Translated ~900 XBE strings (demon names, items, locations, UI labels) using in-place ASCII replacement. Proved the XBE string replacement technique. His work is [available on Zophar's Domain](https://www.zophar.net/translations/XBox/english/shin-megami-tensei-nine.html).
