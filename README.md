@@ -129,7 +129,7 @@ Control codes in dialogue strings:
 
 ## How This Was Made
 
-The reverse engineering, tool development, and documentation in this repository were produced by [Claude](https://claude.ai/) (Anthropic), directed by [@RayCharlizard](https://github.com/RayCharlizard). Claude performed the binary analysis of the XBE executable and script formats, identified the halfwidth rendering system, wrote the Python tools, and authored the technical documentation. RayCharlizard provided project direction, testing, and verification on xemu and original hardware.
+The reverse engineering, tool development, and documentation in this repository were produced by [Claude Opus 4.6](https://claude.ai/) (Anthropic), directed by [@RayCharlizard](https://github.com/RayCharlizard). Claude performed the binary analysis of the XBE executable and script formats, identified the halfwidth rendering system, wrote the Python tools, and authored the technical documentation. RayCharlizard provided project direction, testing, and verification on xemu and original hardware.
 
 ## Prior Work & Credits
 
