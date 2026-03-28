@@ -14,6 +14,10 @@ SMT Nine's rendering engine has a three-layer system for halfwidth text that was
 
 **The fix:** NOP the conditional jump at XBE file offset `0x141537` (`74 47` → `90 90`). This bypasses the flag check and enables halfwidth table lookups for all text contexts. Combined with replacement halfwidth Latin font glyphs, English text renders correctly in dialogue boxes at half-width.
 
+| Original (Japanese fullwidth) | Patched (English halfwidth) |
+|:---:|:---:|
+| ![Japanese dialogue](docs/images/before_japanese.png) | ![English dialogue](docs/images/after_english.png) |
+
 See [docs/HALFWIDTH_SYSTEM.md](docs/HALFWIDTH_SYSTEM.md) for the full technical breakdown.
 
 ## Tools
