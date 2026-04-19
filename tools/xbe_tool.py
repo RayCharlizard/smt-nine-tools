@@ -405,6 +405,7 @@ def cmd_insert(json_path, original_xbe_path, output_xbe_path):
         xbe = bytearray(f.read())
 
     errors = []
+    mismatches = []
     applied = 0
 
     for entry in translated:
@@ -431,15 +432,16 @@ def cmd_insert(json_path, original_xbe_path, output_xbe_path):
         replacement = trans_bytes + b'\x00' * (byte_length - len(trans_bytes))
         assert len(replacement) == byte_length
 
-        # Verify we're overwriting the right location
         expected_raw = bytes.fromhex(entry['raw_hex']) + b'\x00'
         actual = bytes(xbe[file_offset:file_offset + byte_length])
         if actual != expected_raw[:byte_length]:
-            # Check if it's close enough (first few bytes match)
-            # This handles cases where the XBE might already be partially patched
-            pass  # Allow overwrite anyway — the offset is authoritative
+            mismatches.append({
+                'id': entry['id'],
+                'file_offset': file_offset,
+                'expected_prefix': expected_raw[:16].hex(),
+                'actual_prefix': actual[:16].hex(),
+            })
 
-        # Write replacement
         xbe[file_offset:file_offset + byte_length] = replacement
         applied += 1
 
@@ -450,6 +452,16 @@ def cmd_insert(json_path, original_xbe_path, output_xbe_path):
                   f"needs {err['needed']}B, only {err['available']}B available")
         if len(errors) > 10:
             print(f"    ... and {len(errors) - 10} more")
+
+    if mismatches:
+        print(f"\n[!] {len(mismatches)} entries did not match the JSON raw_hex "
+              "(XBE already patched, or JSON stale):")
+        for m in mismatches[:10]:
+            print(f"    ID {m['id']} @ 0x{m['file_offset']:06X}: "
+                  f"expected {m['expected_prefix']}, got {m['actual_prefix']}")
+        if len(mismatches) > 10:
+            print(f"    ... and {len(mismatches) - 10} more")
+        print("    (translations were applied anyway — file_offset is authoritative)")
 
     print(f"\n[*] Writing patched XBE to {output_xbe_path}...")
     os.makedirs(os.path.dirname(output_xbe_path) or '.', exist_ok=True)
