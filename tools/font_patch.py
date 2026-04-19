@@ -357,13 +357,14 @@ def write_tile_to_page(page_img, tile_img, row, col, tile_pitch):
 
 def patch_xpr(input_path, output_path, config_name):
     """
-    Apply halfwidth font patch to an XPR file.
+    Apply halfwidth font patch to an XPR file, touching only the DXT1 blocks
+    that intersect Latin tile regions.
 
-    1. Read the original XPR
-    2. Decode the target page
-    3. Render and paste halfwidth glyphs at the correct tile positions
-    4. DXT1-encode the modified page
-    5. Write back to XPR
+    Non-Latin kanji sharing the target page keep their original compressed
+    bytes — no decode+re-encode pass, so no lossy degradation. For f24
+    (24px tiles, 4-aligned) this gives full idempotency; for f18 (18px
+    tiles, not 4-aligned) a small number of straddling blocks at Latin-tile
+    edges still go through one re-encode cycle.
     """
     config = FONT_CONFIGS[config_name]
     tile_pitch = config["tile_pitch"]
@@ -378,34 +379,51 @@ def patch_xpr(input_path, output_path, config_name):
     with open(input_path, "rb") as f:
         xpr_data = bytearray(f.read())
 
-    # Decode the target page
-    page_data = read_xpr_page(xpr_data, page_num)
-    page_img = dxt1_decode_page(page_data)
+    page_offset = XPR_HEADER_SIZE + page_num * PAGE_SIZE_DXT1
+    page_bytes = bytes(xpr_data[page_offset:page_offset + PAGE_SIZE_DXT1])
 
-    # Render halfwidth glyphs
+    # Decode the full page so we can sample pixels inside the blocks we
+    # touch. Non-touched blocks will keep their original compressed bytes.
+    page_img = dxt1_decode_page(page_bytes)
+
     glyph_tiles = render_halfwidth_glyphs(tile_pitch, font_size)
 
-    # Paste glyphs at correct positions
+    touched_blocks = set()
     for i, ch in enumerate(LATIN_CHARS):
         tile_idx = first_tile + i
         row = tile_idx // tiles_per_row
         col = tile_idx % tiles_per_row
-        write_tile_to_page(page_img, glyph_tiles[ch], row, col, tile_pitch)
+        x = col * tile_pitch
+        y = row * tile_pitch
+        page_img.paste(glyph_tiles[ch], (x, y))
+
+        bx_start = x // 4
+        by_start = y // 4
+        bx_end = (x + tile_pitch + 3) // 4
+        by_end = (y + tile_pitch + 3) // 4
+        for by in range(by_start, by_end):
+            for bx in range(bx_start, bx_end):
+                touched_blocks.add((bx, by))
+
         if i == 0 or i == 10 or i == 36:
             print(f"  '{ch}' → tile {tile_idx} (row {row}, col {col})")
+    print(f"  ... {len(LATIN_CHARS)} glyphs total, {len(touched_blocks)} DXT1 blocks touched")
 
-    print(f"  ... {len(LATIN_CHARS)} glyphs total")
+    pixels = page_img.load()
+    new_page = bytearray(page_bytes)
+    blocks_per_row = PAGE_PIXELS // 4
+    for (bx, by) in touched_blocks:
+        block_pixels = [
+            pixels[bx * 4 + x, by * 4 + y]
+            for y in range(4)
+            for x in range(4)
+        ]
+        encoded = dxt1_encode_block(block_pixels)
+        block_offset = (by * blocks_per_row + bx) * 8
+        new_page[block_offset:block_offset + 8] = encoded
 
-    # Re-encode the page to DXT1
-    encoded_page = dxt1_encode_image(page_img)
-    assert len(encoded_page) == PAGE_SIZE_DXT1, \
-        f"Encoded page size mismatch: {len(encoded_page)} != {PAGE_SIZE_DXT1}"
+    xpr_data[page_offset:page_offset + PAGE_SIZE_DXT1] = new_page
 
-    # Write back into XPR data
-    page_offset = XPR_HEADER_SIZE + page_num * PAGE_SIZE_DXT1
-    xpr_data[page_offset:page_offset + PAGE_SIZE_DXT1] = encoded_page
-
-    # Save
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "wb") as f:
         f.write(xpr_data)
