@@ -69,7 +69,6 @@ def _find_font():
     print("\nInstall dejavu fonts or place DejaVuSansMono-Bold.ttf in the current directory.")
     sys.exit(1)
 
-FONT_PATH = _find_font()
 LATIN_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
 # Font configurations
@@ -316,7 +315,7 @@ def render_halfwidth_glyphs(tile_pitch, font_size, chars=LATIN_CHARS):
     - Left-aligned within the tile (approximately half-tile width)
     - Vertically centered with a baseline offset tuned to match the original font
     """
-    font = ImageFont.truetype(FONT_PATH, font_size)
+    font = ImageFont.truetype(_find_font(), font_size)
     tiles = {}
 
     for ch in chars:
