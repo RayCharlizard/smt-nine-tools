@@ -146,6 +146,10 @@ The reverse engineering, tool development, and documentation in this repository 
 - [xemu compatibility page](https://xemu.app/titles/41540002/)
 - [SMT Nine strategy database (JP)](http://softtank.web.fc2.com/nine_index.html)
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes. Current version: **0.1**.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
