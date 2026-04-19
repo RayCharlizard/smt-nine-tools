@@ -22,8 +22,14 @@ from pathlib import Path
 
 
 def parse_subscript(data: bytes, script_start: int, end_limit: int) -> dict:
-    """Parse a sub-script starting at the 7E 00 magic marker."""
-    if script_start + 18 > len(data):
+    """Parse a sub-script starting at the 7E 00 magic marker.
+
+    `end_limit` is the absolute file offset where this sub-script's allocation
+    ends (for .mgp: the next entry's offset; for .mgs: `len(data)`). Used to
+    bound the section offsets so a corrupted header cannot walk into an
+    adjacent sub-script.
+    """
+    if script_start + 18 > end_limit:
         return None
     magic = struct.unpack_from('<H', data, script_start)[0]
     if magic != 0x007E:
@@ -31,11 +37,11 @@ def parse_subscript(data: bytes, script_start: int, end_limit: int) -> dict:
 
     off1, off2, off3, off4 = struct.unpack_from('<IIII', data, script_start + 2)
 
-    # Section absolute offsets
     abs_s2 = script_start + off2
     abs_s3 = script_start + off3
+    abs_s4 = script_start + off4
 
-    if abs_s2 + 2 > len(data) or abs_s3 > len(data):
+    if abs_s2 + 2 > end_limit or abs_s3 > end_limit or abs_s4 > end_limit:
         return None
 
     # Parse section 2: text strings
