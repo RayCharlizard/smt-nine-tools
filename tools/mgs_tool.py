@@ -416,23 +416,39 @@ def encode_translation(text: str) -> bytes:
     """Encode a translated string, converting placeholders to FF xx control codes.
 
     Raises UnicodeEncodeError if `text` contains any non-ASCII character outside
-    of recognised `{placeholder}` tokens. Callers should catch and surface the
-    error with location context (file, subscript, string index).
+    of recognised `{placeholder}` tokens. Raises ValueError on an unrecognised
+    `{identifier}` token — catches typos like `{naem}` for `{name}` that would
+    otherwise ship as literal text. A `{` followed by non-identifier content
+    (punctuation, spaces) is treated as a literal.
+
+    Callers should catch and surface these errors with location context
+    (file, subscript, string index).
     """
     result = b''
     i = 0
-    while i < len(text):
+    n = len(text)
+    while i < n:
         if text[i] == '{':
             matched = False
             for placeholder, code_bytes in CONTROL_CODES.items():
-                if text[i:i+len(placeholder)] == placeholder:
+                if text.startswith(placeholder, i):
                     result += code_bytes
                     i += len(placeholder)
                     matched = True
                     break
-            if not matched:
-                result += text[i].encode('ascii')
-                i += 1
+            if matched:
+                continue
+            close = text.find('}', i + 1, i + 32)
+            if close != -1:
+                inner = text[i + 1:close]
+                if inner and all(c.isalnum() or c == '_' for c in inner):
+                    known = ', '.join(CONTROL_CODES)
+                    raise ValueError(
+                        f'unrecognized placeholder {{{inner}}} at position {i}; '
+                        f'known placeholders: {known}'
+                    )
+            result += b'{'
+            i += 1
         else:
             result += text[i].encode('ascii')
             i += 1
@@ -492,6 +508,7 @@ def insert_translations(translations_json: str, original_dir: str, output_dir: s
     patched_strings = 0
     skipped_strings = 0
     encoding_errors = []
+    placeholder_errors = []
 
     for filename, subs_data in trans_data.get('files', {}).items():
         filepath = os.path.join(original_dir, filename)
@@ -517,6 +534,12 @@ def insert_translations(translations_json: str, original_dir: str, output_dir: s
                             f'  {filename} / {sub_name} / entry {entry["index"]}: '
                             f'non-ASCII {bad!r} (U+{ord(bad):04X}) at position {e.start} '
                             f'in {trans_text!r}'
+                        )
+                        skipped_strings += 1
+                        continue
+                    except ValueError as e:
+                        placeholder_errors.append(
+                            f'  {filename} / {sub_name} / entry {entry["index"]}: {e}'
                         )
                         skipped_strings += 1
                         continue
@@ -585,6 +608,12 @@ def insert_translations(translations_json: str, original_dir: str, output_dir: s
             print(err)
         if len(encoding_errors) > 20:
             print(f'  ... and {len(encoding_errors) - 20} more')
+    if placeholder_errors:
+        print(f'\n{len(placeholder_errors)} translations skipped due to unrecognised placeholders:')
+        for err in placeholder_errors[:20]:
+            print(err)
+        if len(placeholder_errors) > 20:
+            print(f'  ... and {len(placeholder_errors) - 20} more')
     print(f'Output written to {output_dir}')
 
 
