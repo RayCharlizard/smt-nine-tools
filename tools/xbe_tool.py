@@ -464,62 +464,69 @@ def cmd_insert(json_path, original_xbe_path, output_xbe_path):
 
 def cmd_roundtrip(xbe_path):
     """
-    Extract strings then re-insert originals. Verify byte-for-byte match.
-    This validates the extract→insert pipeline doesn't corrupt anything.
+    Exercise the full extract → insert pipeline with identity translations.
+
+    Extracts strings, sets `translation = text` for every entry, runs
+    cmd_insert into a temp file, and compares the result to the original
+    XBE byte-for-byte. This validates the encode path (ASCII / Shift-JIS
+    fallback) and null padding, not just extract offsets.
     """
     import tempfile
 
     print(f"[*] Roundtrip test on {xbe_path}")
-    print(f"    Step 1: Extract...")
 
     with open(xbe_path, 'rb') as f:
         original = f.read()
 
-    # Extract to temp JSON
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tf:
-        json_path = tf.name
+    with tempfile.TemporaryDirectory() as td:
+        json_path = os.path.join(td, 'extracted.json')
+        out_xbe = os.path.join(td, 'rebuilt.xbe')
 
-    entries = cmd_extract(xbe_path, json_path)
+        print(f"\n    Step 1: Extract...")
+        cmd_extract(xbe_path, json_path)
 
-    # Add "translation" = original text for each entry (identity transform)
-    with open(json_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        for entry in data['strings']:
+            entry['translation'] = entry['text']
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
 
-    for entry in data['strings']:
-        # Re-encode the original text to Shift-JIS (identity roundtrip)
-        entry['translation_raw_hex'] = entry['raw_hex']
-        # Don't set 'translation' — instead we'll do a byte-level roundtrip
+        print(f"\n    Step 2: Insert identity translations...")
+        cmd_insert(json_path, xbe_path, out_xbe)
 
-    # For roundtrip, write original bytes back directly
-    print(f"\n    Step 2: Reconstruct...")
-    xbe_copy = bytearray(original)
+        with open(out_xbe, 'rb') as f:
+            rebuilt = f.read()
 
-    for entry in data['strings']:
-        offset = entry['file_offset']
-        byte_len = entry['byte_length']
-        raw = bytes.fromhex(entry['raw_hex'])
-
-        # Reconstruct: original raw bytes + null padding
-        reconstruction = raw + b'\x00' * (byte_len - len(raw))
-        xbe_copy[offset:offset + byte_len] = reconstruction
-
-    # Compare
-    print(f"    Step 3: Verify...")
-    if bytes(xbe_copy) == original:
+    print(f"\n    Step 3: Verify...")
+    if rebuilt == original:
         print(f"\n[+] PASS — byte-for-byte match on {len(data['strings'])} strings")
-    else:
-        # Find first diff
-        diffs = 0
-        for i in range(len(original)):
-            if xbe_copy[i] != original[i]:
-                if diffs < 5:
-                    print(f"    DIFF at 0x{i:06X}: expected 0x{original[i]:02X}, got 0x{xbe_copy[i]:02X}")
-                diffs += 1
-        print(f"\n[!] FAIL — {diffs} bytes differ")
+        return True
 
-    # Cleanup
-    os.unlink(json_path)
-    return bytes(xbe_copy) == original
+    # Locate diffs and map them back to the entries that cover them
+    diffs = []
+    for i in range(min(len(rebuilt), len(original))):
+        if rebuilt[i] != original[i]:
+            diffs.append((i, original[i], rebuilt[i]))
+
+    entries_by_offset = sorted(data['strings'], key=lambda e: e['file_offset'])
+    diff_entry_ids = set()
+    for offset, _, _ in diffs:
+        for entry in entries_by_offset:
+            e_start = entry['file_offset']
+            e_end = e_start + entry['byte_length']
+            if e_start <= offset < e_end:
+                diff_entry_ids.add(entry['id'])
+                break
+
+    print(f"\n[!] FAIL — {len(diffs)} bytes differ across {len(diff_entry_ids)} entries")
+    for offset, orig, got in diffs[:5]:
+        print(f"    DIFF at 0x{offset:06X}: expected 0x{orig:02X}, got 0x{got:02X}")
+    if len(diffs) > 5:
+        print(f"    ... and {len(diffs) - 5} more byte-level diffs")
+    if len(rebuilt) != len(original):
+        print(f"    Size mismatch: original={len(original)}, rebuilt={len(rebuilt)}")
+    return False
 
 
 # ─── Stats Command ───────────────────────────────────────────────────────────
