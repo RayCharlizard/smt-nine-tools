@@ -545,11 +545,16 @@ def insert_translations(translations_json: str, original_dir: str, output_dir: s
             f.write(rebuilt)
         patched_files += 1
 
-    # Copy any files from original_dir that weren't in translations
+    # Copy any .mgs / .mgp files from original_dir that weren't in translations
     for filename in os.listdir(original_dir):
+        if not (filename.endswith('.mgs') or filename.endswith('.mgp')):
+            continue
+        src = os.path.join(original_dir, filename)
+        if not os.path.isfile(src):
+            continue
         outpath = os.path.join(output_dir, filename)
         if not os.path.exists(outpath):
-            shutil.copy2(os.path.join(original_dir, filename), outpath)
+            shutil.copy2(src, outpath)
 
     print(f'Inserted {patched_strings} translations across {patched_files} files')
     print(f'Skipped {skipped_strings} untranslated strings')
