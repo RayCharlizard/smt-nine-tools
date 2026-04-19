@@ -432,25 +432,30 @@ def decode_page_cmd(xpr_path, page_num, tile_pitch, output_path):
 
 
 def preview_cmd(tile_pitch, output_path):
-    """Render all halfwidth glyphs as a preview strip."""
-    # Pick font size based on tile pitch
+    """Render all halfwidth glyphs as a preview strip.
+
+    Top row: actual-size tiles (as they'll appear in the XPR).
+    Bottom row: 4× nearest-neighbor upscale so individual pixels are visible
+    for inspection.
+    """
     font_size = FONT_CONFIGS["f24"]["font_size"] if tile_pitch >= 24 else FONT_CONFIGS["f18"]["font_size"]
     glyphs = render_halfwidth_glyphs(tile_pitch, font_size)
 
     cols = len(LATIN_CHARS)
-    strip = Image.new("RGBA", (cols * tile_pitch, tile_pitch * 2), (32, 32, 32, 255))
+    scale = 4
+    strip_w = cols * tile_pitch * scale
+    strip_h = tile_pitch + tile_pitch * scale
+    strip = Image.new("RGBA", (strip_w, strip_h), (32, 32, 32, 255))
 
     for i, ch in enumerate(LATIN_CHARS):
-        strip.paste(glyphs[ch], (i * tile_pitch, 0))
-
-    # Add a row with scaled-up versions for easier inspection
-    for i, ch in enumerate(LATIN_CHARS):
-        scaled = glyphs[ch].resize((tile_pitch, tile_pitch), Image.NEAREST)
-        # Already same size, so just paste below
-        strip.paste(glyphs[ch], (i * tile_pitch, tile_pitch))
+        strip.paste(glyphs[ch], (i * tile_pitch * scale, 0))
+        upscaled = glyphs[ch].resize(
+            (tile_pitch * scale, tile_pitch * scale), Image.NEAREST
+        )
+        strip.paste(upscaled, (i * tile_pitch * scale, tile_pitch))
 
     strip.save(output_path)
-    print(f"Preview saved to {output_path} ({cols} glyphs at {tile_pitch}px)")
+    print(f"Preview saved to {output_path} ({cols} glyphs at {tile_pitch}px, {scale}× inspection row)")
 
 
 # ============================================================================
