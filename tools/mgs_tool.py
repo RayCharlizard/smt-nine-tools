@@ -442,7 +442,7 @@ def decode_controls_to_placeholders(raw: bytes) -> str:
                 continue
         # Try Shift-JIS 2-byte char
         b = raw[i]
-        if (0x82 <= b <= 0x9F or 0xE0 <= b <= 0xEF) and i + 1 < len(raw):
+        if (0x81 <= b <= 0x9F or 0xE0 <= b <= 0xFC) and i + 1 < len(raw):
             try:
                 ch = raw[i:i+2].decode('shift-jis')
                 result.append(ch)
