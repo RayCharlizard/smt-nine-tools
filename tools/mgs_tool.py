@@ -413,12 +413,16 @@ CONTROL_DECODE = {v: k for k, v in CONTROL_CODES.items()}
 
 
 def encode_translation(text: str) -> bytes:
-    """Encode a translated string, converting placeholders to FF xx control codes."""
+    """Encode a translated string, converting placeholders to FF xx control codes.
+
+    Raises UnicodeEncodeError if `text` contains any non-ASCII character outside
+    of recognised `{placeholder}` tokens. Callers should catch and surface the
+    error with location context (file, subscript, string index).
+    """
     result = b''
     i = 0
     while i < len(text):
         if text[i] == '{':
-            # Try to match a control code placeholder
             matched = False
             for placeholder, code_bytes in CONTROL_CODES.items():
                 if text[i:i+len(placeholder)] == placeholder:
@@ -427,10 +431,10 @@ def encode_translation(text: str) -> bytes:
                     matched = True
                     break
             if not matched:
-                result += text[i].encode('ascii', errors='replace')
+                result += text[i].encode('ascii')
                 i += 1
         else:
-            result += text[i].encode('ascii', errors='replace')
+            result += text[i].encode('ascii')
             i += 1
     return result
 
@@ -487,6 +491,7 @@ def insert_translations(translations_json: str, original_dir: str, output_dir: s
     patched_files = 0
     patched_strings = 0
     skipped_strings = 0
+    encoding_errors = []
 
     for filename, subs_data in trans_data.get('files', {}).items():
         filepath = os.path.join(original_dir, filename)
@@ -504,7 +509,17 @@ def insert_translations(translations_json: str, original_dir: str, output_dir: s
             for entry in sub_data['entries']:
                 if 'translation' in entry and entry['translation']:
                     trans_text = entry['translation']
-                    trans_bytes = encode_translation(trans_text)
+                    try:
+                        trans_bytes = encode_translation(trans_text)
+                    except UnicodeEncodeError as e:
+                        bad = trans_text[e.start]
+                        encoding_errors.append(
+                            f'  {filename} / {sub_name} / entry {entry["index"]}: '
+                            f'non-ASCII {bad!r} (U+{ord(bad):04X}) at position {e.start} '
+                            f'in {trans_text!r}'
+                        )
+                        skipped_strings += 1
+                        continue
                     if sub_name not in trans_map:
                         trans_map[sub_name] = {}
                     trans_map[sub_name][entry['index']] = trans_bytes
@@ -559,6 +574,12 @@ def insert_translations(translations_json: str, original_dir: str, output_dir: s
 
     print(f'Inserted {patched_strings} translations across {patched_files} files')
     print(f'Skipped {skipped_strings} untranslated strings')
+    if encoding_errors:
+        print(f'\n{len(encoding_errors)} translations skipped due to non-ASCII characters:')
+        for err in encoding_errors[:20]:
+            print(err)
+        if len(encoding_errors) > 20:
+            print(f'  ... and {len(encoding_errors) - 20} more')
     print(f'Output written to {output_dir}')
 
 
