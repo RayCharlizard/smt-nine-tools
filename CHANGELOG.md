@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2 — 2026-04-19
+
+Regression test suite plus two small fixes surfaced while re-validating 0.1. No format or CLI changes — existing JSON extracts and patched binaries remain compatible.
+
+### Tests
+
+- New `tests/` directory with a pytest regression suite covering the non-obvious invariants from 0.1 (Shift-JIS lead-byte range, strict encode, `{placeholder}` tokens, `parse_subscript` bounds, leftover-copy filter, XBE section-layout validation, raw_hex mismatch detection). Runs in under 0.1s with no external assets. ([#24](https://github.com/RayCharlizard/smt-nine-tools/pull/24))
+
+### mgs_tool.py
+
+- `encode_translation` re-raises `UnicodeEncodeError` with the correct position in the caller's text. Previously, because the function encoded one character at a time, the exception's `start` always pointed at index 0 of the one-char substring Python was encoding, so the per-entry diagnostic in `insert_translations` always mis-identified the offending character. ([#24](https://github.com/RayCharlizard/smt-nine-tools/pull/24))
+
+### xbe_tool.py
+
+- Extracted the JSON `raw_hex` comparison in `cmd_insert` into a standalone `_check_raw_hex_match` helper. Behaviour-preserving — the mismatch warning fires on the same inputs as in 0.1. ([#24](https://github.com/RayCharlizard/smt-nine-tools/pull/24))
+
+### Housekeeping
+
+- Added `.gitignore` for Python cache directories (`__pycache__/`, `*.pyc`, `.pytest_cache/`). ([#25](https://github.com/RayCharlizard/smt-nine-tools/pull/25))
+
 ## 0.1 — 2026-04-19
 
 Bug fixes and hardening across all three tools. No format or CLI changes — existing JSON extracts and patched binaries remain compatible.

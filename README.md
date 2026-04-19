@@ -148,7 +148,7 @@ The reverse engineering, tool development, and documentation in this repository 
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for release notes. Current version: **0.1**.
+See [CHANGELOG.md](CHANGELOG.md) for release notes. Current version: **0.2**.
 
 ## License
 
