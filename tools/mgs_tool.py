@@ -450,7 +450,13 @@ def encode_translation(text: str) -> bytes:
             result += b'{'
             i += 1
         else:
-            result += text[i].encode('ascii')
+            try:
+                result += text[i].encode('ascii')
+            except UnicodeEncodeError:
+                raise UnicodeEncodeError(
+                    'ascii', text, i, i + 1,
+                    'non-ASCII character outside of known placeholder'
+                ) from None
             i += 1
     return result
 

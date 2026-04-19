@@ -111,6 +111,20 @@ def _validate_xbe_sections(xbe_data):
         )
 
 
+def _check_raw_hex_match(actual: bytes, expected_hex: str, byte_length: int) -> bool:
+    """Check whether the bytes actually present in the XBE at an entry's file_offset
+    still match the raw_hex recorded when that entry was extracted.
+
+    `actual` is a byte_length-long slice of the XBE. `expected_hex` is the
+    raw_hex field from the JSON (string hex, no null terminator). A null byte
+    is appended to the decoded expected bytes before comparison because
+    extracted strings are null-terminated in the XBE but the stored hex omits
+    the null.
+    """
+    expected = bytes.fromhex(expected_hex) + b'\x00'
+    return actual == expected[:byte_length]
+
+
 def file_to_va(file_offset):
     """Convert file offset to virtual address."""
     for sec in SECTIONS:
@@ -511,9 +525,9 @@ def cmd_insert(json_path, original_xbe_path, output_xbe_path):
         replacement = trans_bytes + b'\x00' * (byte_length - len(trans_bytes))
         assert len(replacement) == byte_length
 
-        expected_raw = bytes.fromhex(entry['raw_hex']) + b'\x00'
         actual = bytes(xbe[file_offset:file_offset + byte_length])
-        if actual != expected_raw[:byte_length]:
+        if not _check_raw_hex_match(actual, entry['raw_hex'], byte_length):
+            expected_raw = bytes.fromhex(entry['raw_hex']) + b'\x00'
             mismatches.append({
                 'id': entry['id'],
                 'file_offset': file_offset,
