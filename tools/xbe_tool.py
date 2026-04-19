@@ -48,6 +48,69 @@ SECTIONS = [
     },
 ]
 
+
+def _validate_xbe_sections(xbe_data):
+    """Parse the XBE section table and confirm it matches SECTIONS.
+
+    Raises ValueError on malformed header or on a section layout that
+    doesn't match the expected SMT Nine build. This guards against silent
+    corruption if the tool is pointed at a different XBE (region variant,
+    re-release, debug build, repack).
+    """
+    if xbe_data[:4] != b'XBEH':
+        raise ValueError(f"not an XBE file (magic = {xbe_data[:4]!r})")
+    base_addr = struct.unpack_from('<I', xbe_data, 0x104)[0]
+    section_count = struct.unpack_from('<I', xbe_data, 0x11C)[0]
+    section_table_va = struct.unpack_from('<I', xbe_data, 0x120)[0]
+    section_table_file = section_table_va - base_addr
+    if not (0 < section_count <= 256):
+        raise ValueError(f"implausible section count: {section_count}")
+    if not (0 <= section_table_file < len(xbe_data)):
+        raise ValueError(
+            f"section table at VA 0x{section_table_va:X} "
+            f"(base 0x{base_addr:X}) is outside the file"
+        )
+
+    found = {}
+    for i in range(section_count):
+        off = section_table_file + i * 0x38
+        if off + 0x38 > len(xbe_data):
+            raise ValueError(f"section {i} header runs past EOF")
+        _flags, va, vsz, raw_addr, raw_size, name_va = struct.unpack_from(
+            '<IIIIII', xbe_data, off
+        )
+        name_file = name_va - base_addr
+        if not (0 <= name_file < len(xbe_data)):
+            continue
+        end = xbe_data.find(b'\x00', name_file, name_file + 64)
+        if end == -1:
+            continue
+        name = xbe_data[name_file:end].decode('ascii', errors='replace')
+        found[name] = {
+            'va_start': va,
+            'va_end': va + vsz,
+            'file_start': raw_addr,
+            'file_end': raw_addr + raw_size,
+        }
+
+    mismatches = []
+    for hc in SECTIONS:
+        parsed = found.get(hc['name'])
+        if parsed is None:
+            mismatches.append(f"section {hc['name']} missing from XBE header")
+            continue
+        for k in ('va_start', 'va_end', 'file_start', 'file_end'):
+            if parsed[k] != hc[k]:
+                mismatches.append(
+                    f"{hc['name']}.{k}: expected 0x{hc[k]:X}, got 0x{parsed[k]:X}"
+                )
+    if mismatches:
+        raise ValueError(
+            "XBE section layout does not match the expected SMT Nine build:\n"
+            + "\n".join(f"  {m}" for m in mismatches)
+        )
+
+
 def file_to_va(file_offset):
     """Convert file offset to virtual address."""
     for sec in SECTIONS:
@@ -280,6 +343,14 @@ def cmd_extract(xbe_path, output_path, min_quality=0.5, min_bytes=5,
         xbe = f.read()
     print(f"    XBE size: {len(xbe):,} bytes")
 
+    try:
+        _validate_xbe_sections(xbe)
+    except ValueError as e:
+        print(f"[!] ABORT: {e}")
+        print("    The hardcoded section offsets are for the known-good SMT Nine XBE.")
+        print("    Running against a different build would scan the wrong regions.")
+        sys.exit(1)
+
     all_entries = []
     entry_id = 0
 
@@ -403,6 +474,14 @@ def cmd_insert(json_path, original_xbe_path, output_xbe_path):
     print(f"[*] Reading original XBE from {original_xbe_path}...")
     with open(original_xbe_path, 'rb') as f:
         xbe = bytearray(f.read())
+
+    try:
+        _validate_xbe_sections(bytes(xbe))
+    except ValueError as e:
+        print(f"[!] ABORT: {e}")
+        print("    The hardcoded section offsets are for the known-good SMT Nine XBE.")
+        print("    Running against a different build risks corrupting the file.")
+        sys.exit(1)
 
     errors = []
     applied = 0
